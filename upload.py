@@ -7,9 +7,9 @@ API_NAME = 'youtube'
 API_VERSION = 'v3'
 SCOPES = ['https://www.googleapis.com/auth/youtube.upload']
 
-mediaFilePath = r'd:\fam_vid\IMG_2475.MOV'
+mediaFilePath = r"C:\FamilyVideos\2023.06.08.mov"
 mediaFile = MediaFileUpload(mediaFilePath)
-thumbnailFilePath = r'd:\fam_vid\thumbnail.png'
+# thumbnailFilePath = r'd:\fam_vid\thumbnail.png'
 service = create_service(CLIENT_SECRET_FILE, API_NAME, API_VERSION, SCOPES)
 
 upload_date_time = datetime.datetime(2020, 12, 25, 12, 30, 0).isoformat() + '.000Z'
@@ -37,8 +37,10 @@ response_upload = service.videos().insert(
     media_body=mediaFile
 ).execute()
 
+# Print the video ID after upload
+print("Uploaded video ID:", response_upload.get('id'))
 
-service.thumbnails().set(
-    videoId=response_upload.get('id'),
-    media_body=MediaFileUpload(thumbnailFilePath)
-).execute()
+# service.thumbnails().set(
+#     videoId=response_upload.get('id'),
+#     media_body=MediaFileUpload(thumbnailFilePath)
+# ).execute()
