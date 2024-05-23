@@ -1,14 +1,15 @@
 import os
 import pickle
-import re
+import json
 from datetime import datetime
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 # Authentication function
 def youtube_authenticate():
-    scopes = ["https://www.googleapis.com/auth/youtube.readonly"]
+    scopes = ["https://www.googleapis.com/auth/youtube"]
     api_service_name = "youtube"
     api_version = "v3"
     client_secrets_file = "client_secrets.json"
@@ -29,8 +30,21 @@ def youtube_authenticate():
 
     return build(api_service_name, api_version, credentials=credentials)
 
-# Function to get playlist ID by name
-def get_playlist_id(youtube, playlist_name):
+# Update or append new playlist ID to JSON file
+def update_new_playlists_json(playlist_title, playlist_id):
+    try:
+        with open('new_playlists.json', 'r+') as file:
+            playlists = json.load(file)
+            playlists[playlist_title] = playlist_id  # Update or add new playlist
+            file.seek(0)
+            json.dump(playlists, file, indent=4)
+            file.truncate()
+    except FileNotFoundError:
+        with open('new_playlists.json', 'w') as file:
+            json.dump({playlist_title: playlist_id}, file, indent=4)
+
+# Function to get or create playlist ID by name
+def get_or_create_playlist(youtube, playlist_name):
     request = youtube.playlists().list(
         part="snippet",
         mine=True,
@@ -40,41 +54,58 @@ def get_playlist_id(youtube, playlist_name):
     for item in response.get('items', []):
         if item['snippet']['title'].lower() == playlist_name.lower():
             return item['id']
-    return None
 
-# Function to list videos in a playlist and print their date information
-def list_videos_in_playlist(youtube, playlist_id):
-    request = youtube.playlistItems().list(
-        part="snippet",
-        playlistId=playlist_id,
-        maxResults=3  # Limit to 5 videos
-    )
-    response = request.execute()
+    # If playlist not found, create it
+    body = {
+        "snippet": {
+            "title": playlist_name,
+            "description": "Automatically created playlist."
+        },
+        "status": {
+            "privacyStatus": "private"
+        }
+    }
+    try:
+        response = youtube.playlists().insert(part="snippet,status", body=body).execute()
+        playlist_id = response['id']
+        update_new_playlists_json(playlist_name, playlist_id)
+        return playlist_id
+    except HttpError as error:
+        print(f"Failed to create playlist: {error}")
+        return None
 
-    for item in response.get('items', []):
-        video_id = item['snippet']['resourceId']['videoId']
-        title = item['snippet']['title']
-        published_date = item['snippet']['publishedAt']
 
-        # Attempt to extract date from the title if no published date
-        date_from_title = re.search(r"\b(\d{1,2}/\d{1,2}/\d{2})\b", title)
-        if date_from_title:
-            date = datetime.strptime(date_from_title.group(), '%m/%d/%y').date()
-        else:
-            date = published_date[:10]  # Slice to get only the YYYY-MM-DD part
+# Update or append new playlist ID to JSON file
+def update_new_playlists_json(playlist_title, playlist_id):
+    # Path to the JSON file
+    json_file_path = 'new_playlists.json'
+    
+    # Read the existing data
+    try:
+        with open(json_file_path, 'r') as file:
+            playlists = json.load(file)
+    except FileNotFoundError:
+        playlists = {}  # If the file does not exist, start with an empty dictionary
 
-        print(f"Title: {title}")
-        print(f"Date: {date}\n")
+    # Update the dictionary with the new playlist ID
+    playlists[playlist_title] = playlist_id
 
+    # Write the updated dictionary back to the file
+    with open(json_file_path, 'w') as file:
+        json.dump(playlists, file, indent=4)
+
+# Example usage within the main script
 def main():
     youtube = youtube_authenticate()
     playlist_name = input("Enter the Playlist name: ")
-    playlist_id = get_playlist_id(youtube, playlist_name)
+    playlist_id = get_or_create_playlist(youtube, playlist_name)
     
     if playlist_id:
-        print(f"Found playlist '{playlist_name}' with ID: {playlist_id}")
+        print(f"Playlist '{playlist_name}' is ready with ID: {playlist_id}")
+        update_new_playlists_json(playlist_name, playlist_id)  # Update the JSON file with the new ID
     else:
-        print(f"No playlist found with the name '{playlist_name}'")
+        print(f"Failed to prepare playlist named '{playlist_name}'")
 
 if __name__ == "__main__":
     main()
+
